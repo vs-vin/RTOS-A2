@@ -23,6 +23,17 @@
 #include  <semaphore.h>
 #include  <sys/time.h>
 
+/* --- Defines --- */
+
+#define MAXCHAR 100
+#define ENDSTRING '\0'
+
+/* --- Global Variables --- */
+
+int z = 1;
+int fd[2];
+char PipeReadData[MAXCHAR+1];
+
 /* --- Structs --- */
 
 typedef struct ThreadParams {
@@ -101,19 +112,79 @@ void initializeData(ThreadParams *params) {
   sem_init(&(params->sem_write), 0, 0);
   sem_init(&(params->sem_read), 0, 0);
   sem_init(&(params->sem_justify), 0, 0);
+  
+
   //TODO: add your code
-  printf("data init \n");
+
+/* create a pipe: fd[0] is a pointer for reading and fd[1] for writing */
+  if ( pipe(fd) < 0 ) 
+      perror("pipe error");
+  
+  // close read and write initially
+  //close(fd[0]);
+  //close(fd[1]);
+
+  printf("data init complete \n");
 
   return;
 }
 
-void* ThreadA(void *params) {
+void* ThreadA(void *params) 
+{
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
-  while(1)
+  while(z == 1)
   {
+  	// wait for signal to proceed reading
     sem_wait(&p->sem_write);
     printf("Thread A running\n");
+
+    // initialise file variables
+    FILE *fp;
+    char str[101];
+    char* filename = "data.txt";
+
+
+ 	// Open data file
+    fp = fopen(filename, "r");
+    if (fp == NULL){
+        printf("Could not open file %s",filename);
+        return 1;
+    }
+
+    printf("\n ------ Reading File ------ \n");
+
+    // Read from file
+    while (fgets(str, MAXCHAR, fp) != NULL)
+    {
+    	//Add wait semaphore wait and post here??
+    	printf("File read: %s \n", str);
+    	//open(fd[1]);
+    	int len = strlen(str);
+    	write(fd[1], str, len);
+    	//close(fd[1]);
+
+    	//open(fd[0]);
+    	read(fd[0], PipeReadData, len);
+    	PipeReadData[len] = '\0';
+    	//strncat(PipeReadData, ENDSTRING, strlen(ENDSTRING));
+    	printf("Pipe read: %s \n", PipeReadData);
+    	//close(fd[0]);
+
+
+    	sleep(1);
+    }  
+
+    //printf("%s", str);
+    printf("\n ------ Reading Complete ------ \n");
+    
+    // Indicate reading complete
+    z = 0;
+
+    // Close file
+    fclose(fp);
+    printf("\n");
+
     //sleep(1);
     sem_post(&p->sem_read);
   }
@@ -121,10 +192,11 @@ void* ThreadA(void *params) {
   return 0;
 }
 
-void* ThreadB(void *params) { 
+void* ThreadB(void *params) 
+{ 
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
-  while(1)
+  while(z == 1)
   {
     sem_wait(&p->sem_read);
     printf("Thread B running\n");
@@ -134,10 +206,11 @@ void* ThreadB(void *params) {
   return 0;
 }
 
-void* ThreadC(void *params) {
+void* ThreadC(void *params) 
+{
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
-  while(1)
+  while(z == 1)
   {
     sem_wait(&p->sem_justify);
     printf("Thread C running\n\n");
