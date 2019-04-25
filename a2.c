@@ -30,9 +30,17 @@
 
 /* --- Global Variables --- */
 
+// while loops condition
 int z = 1;
+
+// pipe pointers array
 int fd[2];
+
+// Pipe read data storage string
 char PipeReadData[MAXCHAR+1];
+
+// length of string in pipe
+int len;
 
 /* --- Structs --- */
 
@@ -119,10 +127,6 @@ void initializeData(ThreadParams *params) {
 /* create a pipe: fd[0] is a pointer for reading and fd[1] for writing */
   if ( pipe(fd) < 0 ) 
       perror("pipe error");
-  
-  // close read and write initially
-  //close(fd[0]);
-  //close(fd[1]);
 
   printf("data init complete \n");
 
@@ -136,8 +140,8 @@ void* ThreadA(void *params)
   while(z == 1)
   {
   	// wait for signal to proceed reading
-    sem_wait(&p->sem_write);
-    printf("Thread A running\n");
+    // sem_wait(&p->sem_write);
+    // printf("Thread A running\n\n");
 
     // initialise file variables
     FILE *fp;
@@ -155,38 +159,51 @@ void* ThreadA(void *params)
     printf("\n ------ Reading File ------ \n");
 
     // Read from file
-    while (fgets(str, MAXCHAR, fp) != NULL)
+    while (z == 1)
     {
     	//Add wait semaphore wait and post here??
-    	printf("File read: %s \n", str);
-    	//open(fd[1]);
-    	int len = strlen(str);
-    	write(fd[1], str, len);
-    	//close(fd[1]);
+    	// wait for signal to proceed reading
+	    sem_wait(&p->sem_write);
+	    printf("Thread A running\n\n");
 
-    	//open(fd[0]);
-    	read(fd[0], PipeReadData, len);
-    	PipeReadData[len] = '\0';
-    	//strncat(PipeReadData, ENDSTRING, strlen(ENDSTRING));
-    	printf("Pipe read: %s \n", PipeReadData);
-    	//close(fd[0]);
+	    if (fgets(str, MAXCHAR, fp) != NULL)
+	    {
+	    	printf("File read: %s \n", str);
+	    	//open(fd[1]);
 
+	    	// record string length, including null terminator
+			len = strlen(str) + 1;
+
+			// write string to pipe
+	    	write(fd[1], str, len);
+	    	//close(fd[1]);
+
+	    	//open(fd[0]);
+	    	//
+	    	// read(fd[0], PipeReadData, len);
+	    	// //PipeReadData[len] = '\0';
+	    	// //strncat(PipeReadData, ENDSTRING, strlen(ENDSTRING));
+	    	// printf("Pipe read: %s \n", PipeReadData);
+		}
+		else
+		{
+			// Indicate reading complete
+			z = 0;
+
+			// Closing Pipe pointers
+			close(fd[0]);
+			close(fd[1]);
+
+			printf("\n ------ Reading Complete ------ \n");
+		}
 
     	sleep(1);
+    	sem_post(&p->sem_read);
     }  
-
-    //printf("%s", str);
-    printf("\n ------ Reading Complete ------ \n");
-    
-    // Indicate reading complete
-    z = 0;
 
     // Close file
     fclose(fp);
     printf("\n");
-
-    //sleep(1);
-    sem_post(&p->sem_read);
   }
   
   return 0;
@@ -196,12 +213,22 @@ void* ThreadB(void *params)
 { 
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
-  while(z == 1)
+  while(1)
   {
     sem_wait(&p->sem_read);
-    printf("Thread B running\n");
+    printf("\t Thread B running\n\n");
+
+    read(fd[0], PipeReadData, len);
+	printf("\t Pipe read: %s \n", PipeReadData);
+
     //sleep(1);
-    sem_post(&p->sem_justify); 
+    sem_post(&p->sem_justify);
+
+    if (z == 0)
+    {
+    	printf("\t*complete*\n");
+    	break;
+    }
   }
   return 0;
 }
@@ -213,9 +240,14 @@ void* ThreadC(void *params)
   while(z == 1)
   {
     sem_wait(&p->sem_justify);
-    printf("Thread C running\n\n");
-    sleep(1);
+    printf("\t\t Thread C running\n\n");
+    //sleep(1);
     sem_post(&p->sem_write);
+    if (z == 0)
+    {
+    	printf("\t*complete*\n");
+    	break;
+    }
   }
   return 0;
 }
