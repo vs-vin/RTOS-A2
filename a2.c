@@ -9,7 +9,7 @@
 
 /*
   To compile prog_1 ensure that gcc is installed and run the following command:
-  gcc prog_1.c -o prog_1 -lpthread -lrt -Wall
+  gcc prog_1.c -o prog_1 -pthread -lrt -Wall
 
 */
 #include  <pthread.h>
@@ -27,6 +27,9 @@
 
 #define MAXCHAR 100
 #define ENDSTRING '\0'
+#define DATA_FILE "data.txt"
+#define SRC_FILE "src.txt"
+#define HEADER_END "end_header"
 
 /* --- Global Variables --- */
 
@@ -126,7 +129,7 @@ void initializeData(ThreadParams *params) {
 
 /* create a pipe: fd[0] is a pointer for reading and fd[1] for writing */
   if ( pipe(fd) < 0 ) 
-      perror("pipe error");
+    perror("pipe error");
 
   printf("data init complete \n");
 
@@ -137,53 +140,51 @@ void* ThreadA(void *params)
 {
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
-  while(z == 1)
-  {
-  	// wait for signal to proceed reading
-    // sem_wait(&p->sem_write);
-    // printf("Thread A running\n\n");
+  // wait for signal to proceed reading
+	// sem_wait(&p->sem_write);
+	// printf("Thread A running\n\n");
 
-    // initialise file variables
-    FILE *fp;
-    char str[101];
-    char* filename = "data.txt";
+	// initialise file variables
+	FILE *fp;
+	char str[MAXCHAR+1];
+	char* filename = DATA_FILE;
 
 
- 	// Open data file
-    fp = fopen(filename, "r");
-    if (fp == NULL){
-        printf("Could not open file %s",filename);
-        return 1;
-    }
+	// Open data file
+	fp = fopen(filename, "r");
+	if (fp == NULL){
+	    printf("Could not open file %s",filename);
+	    return 1;
+	}
 
-    printf("\n ------ Reading File ------ \n");
+	printf("\n ------ Reading File ------ \n");
 
-    // Read from file
-    while (z == 1)
+	// Read from file
+	while (z)
+	{
+		//Add wait semaphore wait and post here??
+		// wait for signal to proceed reading
+    sem_wait(&p->sem_write);
+    printf("\n\t Thread A running\n");
+
+    if (fgets(str, MAXCHAR, fp) != NULL)
     {
-    	//Add wait semaphore wait and post here??
-    	// wait for signal to proceed reading
-	    sem_wait(&p->sem_write);
-	    printf("Thread A running\n\n");
+    	printf("File read: %s \n", str);
+    	//open(fd[1]);
 
-	    if (fgets(str, MAXCHAR, fp) != NULL)
-	    {
-	    	printf("File read: %s \n", str);
-	    	//open(fd[1]);
-
-	    	// record string length, including null terminator
+    	// record string length, including null terminator
 			len = strlen(str) + 1;
 
 			// write string to pipe
-	    	write(fd[1], str, len);
-	    	//close(fd[1]);
+	  	write(fd[1], str, len);
+	  	//close(fd[1]);
 
-	    	//open(fd[0]);
-	    	//
-	    	// read(fd[0], PipeReadData, len);
-	    	// //PipeReadData[len] = '\0';
-	    	// //strncat(PipeReadData, ENDSTRING, strlen(ENDSTRING));
-	    	// printf("Pipe read: %s \n", PipeReadData);
+	  	//open(fd[0]);
+	  	//
+	  	// read(fd[0], PipeReadData, len);
+	  	// //PipeReadData[len] = '\0';
+	  	// //strncat(PipeReadData, ENDSTRING, strlen(ENDSTRING));
+	  	// printf("Pipe read: %s \n", PipeReadData);
 		}
 		else
 		{
@@ -197,16 +198,16 @@ void* ThreadA(void *params)
 			printf("\n ------ Reading Complete ------ \n");
 		}
 
-    	sleep(1);
-    	sem_post(&p->sem_read);
-    }  
+		//sleep(1);
+		sem_post(&p->sem_read);
+	}  
 
     // Close file
     fclose(fp);
     printf("\n");
-  }
-  
-  return 0;
+
+	  
+	 return 0;
 }
 
 void* ThreadB(void *params) 
@@ -216,19 +217,21 @@ void* ThreadB(void *params)
   while(1)
   {
     sem_wait(&p->sem_read);
-    printf("\t Thread B running\n\n");
+    printf("\n\t Thread B running\n");
+    if (z == 0)
+    {
+    	printf("\t*complete*\n");
+    	sem_post(&p->sem_justify);
+    	break;
+    }
 
     read(fd[0], PipeReadData, len);
-	printf("\t Pipe read: %s \n", PipeReadData);
+		printf("Pipe read: %s \n", PipeReadData);
 
     //sleep(1);
     sem_post(&p->sem_justify);
 
-    if (z == 0)
-    {
-    	printf("\t*complete*\n");
-    	break;
-    }
+    
   }
   return 0;
 }
@@ -237,17 +240,54 @@ void* ThreadC(void *params)
 {
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
-  while(z == 1)
+
+  // initialise file variables
+	FILE *fp;
+	char str[MAXCHAR+1];
+	char* filename = SRC_FILE;
+
+	// Open data file
+	fp = fopen(filename, "w");
+	if (fp == NULL)
+	{
+	    printf("Could not open file %s",filename);
+	    return 1;
+	}
+
+	int content = 0;
+
+  while(1)
   {
-    sem_wait(&p->sem_justify);
-    printf("\t\t Thread C running\n\n");
-    //sleep(1);
-    sem_post(&p->sem_write);
-    if (z == 0)
+  	sem_wait(&p->sem_justify);
+	  printf("\n\t Thread C running\n");
+
+	  if (z == 0)
     {
     	printf("\t*complete*\n");
     	break;
     }
-  }
+
+	  if (content)
+	  {
+	  	fprintf(fp, "%s", PipeReadData);
+	  	printf("File write: %s", PipeReadData);
+	  }
+	  else
+	  {
+	  	printf("\t still in header\n");
+	  }
+
+	  // if (!strncmp(PipeReadData, HEADER_END, len))
+	  if (strstr(PipeReadData, HEADER_END) != NULL)
+	  {
+  		content = 1;
+  		printf("end of header recognised\n");
+	  }
+
+	  //sleep(1);
+	  sem_post(&p->sem_write);
+
+	}
+
   return 0;
 }
