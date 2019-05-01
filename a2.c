@@ -9,9 +9,22 @@
 
 /*
   To compile prog_1 ensure that gcc is installed and run the following command:
-  gcc prog_1.c -o prog_1 -pthread -lrt -Wall
-
+  gcc a2.c -o a2 -pthread -lrt -Wall
 */
+
+/* --- Code usage --- */
+
+/*	Edit the Data file and Source file names below in the "Defines" section to
+		align with the files to be read and written to, respectively.
+
+		The marker for the end of the header section is defined as HEADER_END.
+		Edit this to match the Data file specifications.
+
+		The MAXCHAR define can be changed to reflect the maximum length 
+		of each line in the data file 
+*/
+
+/* --- Included Libraries --- */
 #include  <pthread.h>
 #include  <stdlib.h>
 #include  <unistd.h>
@@ -25,7 +38,7 @@
 
 /* --- Defines --- */
 
-#define MAXCHAR 100
+#define MAXCHAR 100						// Maximum characters read from file
 #define ENDSTRING '\0'
 #define DATA_FILE "data.txt"
 #define SRC_FILE "src.txt"
@@ -72,8 +85,8 @@ void* ThreadC(void *params);
 int main(int argc, char const *argv[]) 
 {
   printf("START\n");
-  //struct timeval t1, t2;
-  //gettimeofday(&t1, NULL);  // Start Timer
+
+  // Thread creation variables
   int err;
   pthread_t tid[3];
   pthread_attr_t attr;
@@ -83,55 +96,70 @@ int main(int argc, char const *argv[])
   initializeData(&params);
   pthread_attr_init(&attr);
 
-  //Starting Semaphore
+  // Signal first semaphore for Thread A to begin
   sem_post(&params.sem_write);
 
-  // Create Threads
+
+  /* -------- Thread Creation -------- */
   if((err = pthread_create(&(tid[0]), &attr, &ThreadA, (void*)(&params))))
   {
-	  perror("Error creating threads: ");
+	  perror("Error creating Thread A");
       exit(-1);
   }
-  //TODO: add your code
-  
+  // TODO: add your code
+ 	
   if((err = pthread_create(&(tid[1]), &attr, &ThreadB, (void*)(&params))))
   {
-    perror("Error creating threads: ");
+    perror("Error creating Thread B");
       exit(-1);
   }
 
   if((err = pthread_create(&(tid[2]), &attr, &ThreadC, (void*)(&params))))
   {
-    perror("Error creating threads: ");
+    perror("Error creating Thread C");
       exit(-1);
   }
 
 
-
-  // Wait on threads to finish
-  pthread_join(tid[0], NULL); 
-  pthread_join(tid[1], NULL);
-  pthread_join(tid[2], NULL);
-  //TODO: add your code
+  /* -------- Waiting for Thread Completion -------- */
+  if (pthread_join(tid[0], NULL) != 0)
+  {
+  	perror("Thread A did not terminate correctly");
+    exit(-1);
+  } 
+  
+  if (pthread_join(tid[1], NULL) != 0)
+  {
+  	perror("Thread B did not terminate correctly");
+    exit(-1);
+  }
+  
+  if (pthread_join(tid[2], NULL) != 0)
+  {
+  	perror("Thread C did not terminate correctly");
+    exit(-1);
+  }
+  
+  // Indicate Successful Completion
   printf("YA DUN M8!!\n");
 
   return 0;
 }
 
-void initializeData(ThreadParams *params) {
+void initializeData(ThreadParams *params) 
+{
   // Initialize Sempahores
   sem_init(&(params->sem_write), 0, 0);
   sem_init(&(params->sem_read), 0, 0);
   sem_init(&(params->sem_justify), 0, 0);
-  
+ 
+  // TODO: add your code
 
-  //TODO: add your code
-
-/* create a pipe: fd[0] is a pointer for reading and fd[1] for writing */
+	// create a pipe: fd[0] is pointer for reading and fd[1] for writing
   if ( pipe(fd) < 0 ) 
-    perror("pipe error");
+    perror("pipe creation error");
 
-  printf("data init complete \n");
+  printf("Semaphore and pipe init successful \n");
 
   return;
 }
@@ -140,11 +168,8 @@ void* ThreadA(void *params)
 {
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
-  // wait for signal to proceed reading
-	// sem_wait(&p->sem_write);
-	// printf("Thread A running\n\n");
 
-	// initialise file variables
+	// Initialise file variables
 	FILE *fp;
 	char str[MAXCHAR+1];
 	char* filename = DATA_FILE;
@@ -152,43 +177,35 @@ void* ThreadA(void *params)
 
 	// Open data file
 	fp = fopen(filename, "r");
-	if (fp == NULL){
+	if (fp == NULL)
+	{
 	    printf("Could not open file %s",filename);
 	    return 1;
 	}
 
-	printf("\n ------ Reading File ------ \n");
+	printf("\n ------ File Read Begin ------ \n");
 
 	// Read from file
 	while (z)
 	{
-		//Add wait semaphore wait and post here??
-		// wait for signal to proceed reading
+		// wait for pipe write signal from Thread C
     sem_wait(&p->sem_write);
+
     printf("\n\t Thread A running\n");
 
     if (fgets(str, MAXCHAR, fp) != NULL)
     {
     	printf("File read: %s \n", str);
-    	//open(fd[1]);
 
     	// record string length, including null terminator
 			len = strlen(str) + 1;
 
 			// write string to pipe
 	  	write(fd[1], str, len);
-	  	//close(fd[1]);
-
-	  	//open(fd[0]);
-	  	//
-	  	// read(fd[0], PipeReadData, len);
-	  	// //PipeReadData[len] = '\0';
-	  	// //strncat(PipeReadData, ENDSTRING, strlen(ENDSTRING));
-	  	// printf("Pipe read: %s \n", PipeReadData);
 		}
 		else
 		{
-			// Indicate reading complete
+			// Indicate EOF reached
 			z = 0;
 
 			// Closing Pipe pointers
@@ -198,7 +215,7 @@ void* ThreadA(void *params)
 			printf("\n ------ Reading Complete ------ \n");
 		}
 
-		//sleep(1);
+		// Signal Thread B to proceed
 		sem_post(&p->sem_read);
 	}  
 
@@ -214,21 +231,28 @@ void* ThreadB(void *params)
 { 
   //TODO: add your code
   ThreadParams* p = (ThreadParams*)params;
+
   while(1)
   {
+  	// wait for pipe read signal from Thread A
     sem_wait(&p->sem_read);
+
     printf("\n\t Thread B running\n");
+
+    // Checks if Thread A at EOF 
     if (z == 0)
     {
+    	// Thread C signalled then break from while loop
     	printf("\t*complete*\n");
     	sem_post(&p->sem_justify);
     	break;
     }
 
+    // Read from pipe
     read(fd[0], PipeReadData, len);
 		printf("Pipe read: %s \n", PipeReadData);
 
-    //sleep(1);
+    // Signal Thread C to proceed
     sem_post(&p->sem_justify);
 
     
@@ -243,7 +267,6 @@ void* ThreadC(void *params)
 
   // initialise file variables
 	FILE *fp;
-	char str[MAXCHAR+1];
 	char* filename = SRC_FILE;
 
 	// Open data file
@@ -254,7 +277,8 @@ void* ThreadC(void *params)
 	    return 1;
 	}
 
-	int content = 0;
+	// Indicates whe
+	int headerEnd = 0;
 
   while(1)
   {
@@ -263,28 +287,31 @@ void* ThreadC(void *params)
 
 	  if (z == 0)
     {
+    	// EOF reached, break from while loop
     	printf("\t*complete*\n");
     	break;
     }
 
-	  if (content)
+    // Check if data file content has been reached
+	  if (headerEnd)
 	  {
+	  	// write string to source file
 	  	fprintf(fp, "%s", PipeReadData);
-	  	printf("File write: %s", PipeReadData);
+	  	printf("File write: %s\n\n", PipeReadData);
 	  }
 	  else
 	  {
 	  	printf("\t still in header\n");
 	  }
 
-	  // if (!strncmp(PipeReadData, HEADER_END, len))
+	  // Check if end of header line has been reached
 	  if (strstr(PipeReadData, HEADER_END) != NULL)
 	  {
-  		content = 1;
+  		headerEnd = 1;
   		printf("end of header recognised\n");
 	  }
 
-	  //sleep(1);
+	  // Signal Thread A to proceed
 	  sem_post(&p->sem_write);
 
 	}
