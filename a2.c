@@ -7,8 +7,9 @@
 //***********************************************************************************
 /***********************************************************************************/
 
-/*
-  To compile prog_1 ensure that gcc is installed and run the following command:
+/* --- Compile Info --- 
+
+  To compile a2.c ensure that gcc is installed and run the following command:
   gcc a2.c -o a2 -pthread -lrt -Wall
 */
 
